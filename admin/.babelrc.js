@@ -1,6 +1,6 @@
-const env = require(".config/setup");
+const env = require("./config/setup");
 
 module.exports = {
-    presets: ["next/babel"],
-    plugins: [["transform-define", env]]
+  presets: ["next/babel"],
+  plugins: [["transform-define", env]]
 };
