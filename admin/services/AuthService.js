@@ -1,10 +1,17 @@
-import fetch from "isomorphic-fetch";
-import generateRandomString from "../utils/generateRandom";
+import auth0 from "auth0-js";
 import scopesArray from "../utils/scopesArray";
-import getHashParams from "../utils/getHashParams";
-import { config } from "../config/client";
+import { auth0EnvVars } from "../const";
 
 export default class AuthService {
+  auth0 = new auth0.WebAuth({
+    domain: auth0EnvVars.AUTH0_DOMAIN,
+    clientID: auth0EnvVars.AUTH0_CLIENT_ID,
+    audience: auth0EnvVars.AUTH0_API_AUDIENCE,
+    redirectUri: auth0EnvVars.AUHT0_REDIRECT_URI,
+    responseType: "token id_token",
+    scope: scopesArray.join(" ")
+  });
+
   constructor() {
     this.login = this.login.bind(this);
     this.logout = this.logout.bind(this);
@@ -14,17 +21,7 @@ export default class AuthService {
   }
 
   login() {
-    const state = generateRandomString(16);
-    localStorage.setItem("auth_state", state);
-
-    let url = "https://accounts.spotify.com/authorize";
-    url += "?response_type=token";
-    url += "&client_id=" + encodeURIComponent(config.spotifyClientId);
-    url += "&scope=" + encodeURIComponent(scopesArray.join(" "));
-    url += "&redirect_uri=" + encodeURIComponent(config.spotifyRedirectUri);
-    url += "&state=" + encodeURIComponent(state);
-
-    window.location.href = url;
+    this.auth0.authorize();
   }
 
   logout() {
@@ -37,21 +34,15 @@ export default class AuthService {
 
   handleAuthentication() {
     return new Promise((resolve, reject) => {
-      const { access_token, state } = getHashParams();
-      const auth_state = localStorage.getItem("auth_state");
-
-      if (state === null || state != auth_state) {
-        reject(new Error("The state doesn't match"));
-      }
-
-      localStorage.removeItem("auth_state");
-
-      if (access_token) {
-        this.setSession({ accessToken: access_token });
-        return resolve(access_token);
-      } else {
-        return reject(new Error("The token is invalid"));
-      }
+      this.auth0.parseHash((error, authResult) => {
+        if (error) {
+          return reject(error);
+        }
+        if (authResult && authResult.accessToken && authResult.idToken) {
+          this.setSession(authResult);
+          return resolve(authResult.accessToken);
+        }
+      });
     }).then((accessToken) => {
       return this.handleUserInfo(accessToken);
     });
@@ -63,6 +54,7 @@ export default class AuthService {
     );
 
     localStorage.setItem("access_token", authResult.accessToken);
+    localStorage.setItem("id_token", authResult.idToken);
     localStorage.setItem("expires_at", expiresAt);
   }
 
@@ -72,16 +64,17 @@ export default class AuthService {
   }
 
   handleUserInfo(accessToken) {
-    const headers = {
-      Authorization: `Bearer ${accessToken}`,
-    };
-
-    return fetch("https://api.spotify.com/v1/me", { headers })
-      .then((response) => response.json())
-      .then((profile) => {
-        this.setProfile(profile);
-        return profile;
+    return new Promise((resolve, reject) => {
+      this.auth0.client.userInfo(accessToken, (error, profile) => {
+        if (error) {
+          return reject(error);
+        }
+        if (profile) {
+          this.setProfile(profile);
+          return resolve(profile);
+        }
       });
+    });
   }
 
   setProfile(profile) {

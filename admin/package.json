@@ -12,6 +12,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "auth0-js": "^9.18.0",
     "babel-plugin-transform-define": "^2.0.1",
     "dotenv": "^10.0.0",
     "isomorphic-fetch": "^3.0.0",
